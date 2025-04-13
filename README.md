@@ -1,2 +1,2 @@
-# CSE471-Project-
+# CSE471-Project
 Mobile Banking
