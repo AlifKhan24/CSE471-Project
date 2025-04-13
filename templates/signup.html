@@ -1,0 +1,197 @@
+<!DOCTYPE html> 
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Signup - Mobile Banking</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+    }
+
+    body {
+      background-color: #e5e5dc;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .container {
+      width: 90%;
+      max-width: 1000px;
+      display: flex;
+      background-color: #0f1c2e;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    }
+
+    .left-section {
+      background-color: #0f1c2e;
+      color: white;
+      flex: 1;
+      padding: 40px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .left-section img {
+      width: 200px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .left-section h2 {
+      font-size: 22px;
+      color: #fff;
+    }
+
+    .right-section {
+      background-color: #fff;
+      flex: 1;
+      padding: 40px 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .right-section h1 {
+      color: #3e75c2;
+      margin-bottom: 20px;
+    }
+
+    .right-section p {
+      margin-bottom: 20px;
+      color: #666;
+      font-size: 14px;
+    }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px 20px;
+    }
+
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"] {
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: 14px;
+      width: 100%;
+    }
+
+    .error-message {
+      color: red;
+      font-size: 13px;
+      margin-top: -10px;
+      grid-column: span 2;
+      margin-bottom: 10px;
+    }
+
+    .full-width {
+      grid-column: span 2;
+    }
+
+    .checkbox {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      grid-column: span 2;
+    }
+
+    .checkbox input {
+      margin-right: 10px;
+    }
+
+    .checkbox a {
+      color: #3e75c2;
+      text-decoration: none;
+    }
+
+    .signup-btn {
+      grid-column: span 2;
+      background-color: #3e75c2;
+      border: none;
+      padding: 12px;
+      color: white;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+
+      form {
+        grid-template-columns: 1fr;
+      }
+
+      .signup-btn,
+      .full-width,
+      .checkbox {
+        grid-column: span 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="left-section">
+      <img src="https://i.postimg.cc/nLt7Kfnk/Mobile-Banking-Logo.png" alt="Signup Image">
+      <h2>Let’s Make it Happen Together!</h2>
+    </div>
+    <div class="right-section">
+      <h1>Create An Account</h1>
+      <p>Already have an account? <a href="/login" style="color:#3e75c2; text-decoration: none;">Sign in here!</a></p>
+      
+      <!-- Displaying error message if phone number already exists -->
+      {% if phone_error %}
+        <div class="error-message">{{ phone_error }}</div>
+      {% endif %}
+      
+      <form id="signupForm" method="POST" action="/signup">
+        <input type="text" name="firstName" placeholder="First Name" required>
+        <input type="text" name="lastName" placeholder="Last Name" required>
+        <input type="email" name="email" placeholder="Email" required>
+
+        <input type="text" name="phone" placeholder="Phone Number" required>
+        <input type="text" name="nid" placeholder="NID" required>
+        <input type="password" name="password" placeholder="Create Password" required>
+
+        <!-- Add Date of Birth field -->
+        <input type="date" name="dob" placeholder="Date of Birth" required>
+
+        <!-- Check if there's an error and display it -->
+        {% if error %}
+          <div class="error-message">{{ error }}</div>
+        {% endif %}
+
+        <!-- Check if there's a phone number error -->
+        {% if phone_error %}
+          <div class="error-message">{{ phone_error }}</div>
+        {% endif %}
+
+        <div class="checkbox">
+          <input type="checkbox" required>
+          <label>Creating your account means you accept our <a href="#">Terms & Conditions</a>.</label>
+        </div>
+
+        <button type="submit" class="signup-btn">Create Account</button>
+        <button type="button" class="signup-btn" style="background-color: #ccc; color: #0f1c2e;" onclick="window.location.href='/';">Back</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
