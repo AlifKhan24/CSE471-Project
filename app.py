@@ -16,7 +16,7 @@ app.secret_key = 'your_secret_key_here'
 db = pymysql.connect(
     host="localhost",
     user="root",
-    password="@Mysql",
+    password="Your Password",
     database="mobilebanking",
     cursorclass=pymysql.cursors.DictCursor  
 )
@@ -37,9 +37,174 @@ def generate_unique_trx_id(cursor):
         if not cursor.fetchone():
             return trx_id
 
+### Home ###
+@app.route("/home")
+def home():
+    user_id = get_user_id_from_cookie()
+    if not user_id:
+        return redirect("/login")
+    with db.cursor() as cursor:
+        cursor.execute("SELECT * FROM user_profile WHERE user_id = %s", (user_id,))
+        user = cursor.fetchone()
+    if user:
+        return render_template("home.html", user=user)
+    else:
+        return "User not found", 404
+
+@app.route("/logout")
+def logout():
+    resp = make_response(redirect("/login"))
+    resp.delete_cookie("user_id")
+    return resp
+
+#user_signup
+@app.route("/signup", methods=["GET", "POST"])
+def signup():
+    if request.method == "GET":
+        return render_template("signup.html")
+    try:
+        firstName = request.form.get("firstName")
+        lastName = request.form.get("lastName")
+        dob = request.form.get("dob")
+        email = request.form.get("email")
+        phone = request.form.get("phone")
+        nid = request.form.get("nid")
+        password = request.form.get("password")
+        # Validating phone number 
+        if len(phone) != 11 or not phone.startswith("01"):
+            return render_template("signup.html", error="Enter a valid 11-digit phone number starting with '01'.")
+        try:
+            dob_date = datetime.datetime.strptime(dob, "%Y-%m-%d").date()
+        except ValueError:
+            return render_template("signup.html", error="Invalid DOB format. Use YYYY-MM-DD.")
+        # Checking if the phone number already exists
+        with db.cursor() as cursor:
+            cursor.execute("SELECT * FROM user_profile WHERE phone_number = %s", (phone,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                return render_template("signup.html", phone_error="Phone number already in use")
+        hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
+        with db.cursor() as cursor:
+            cursor.execute("""INSERT INTO user_profile (first_name, last_name, dob, email, phone_number, nid, password, balance, points, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 1000, 0, 'active')""", 
+                (firstName, lastName, dob_date, email, phone, nid, hashed_password.decode()))
+            db.commit()
+        return redirect("/login")
+    except Exception as e:
+        return render_template("signup.html", error=f"Signup error: {str(e)}")
+
+#user_login
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "GET":
+        return render_template("login.html")
+    phone = request.form.get("phone")
+    password = request.form.get("password")
+    if not phone or len(phone) != 11 or not phone.startswith("01"):
+        return render_template("login.html", error="Enter a valid 11-digit phone number starting with '01'.")
+    with db.cursor() as cursor:
+        cursor.execute("SELECT * FROM user_profile WHERE phone_number = %s", (phone,))
+        user = cursor.fetchone()
+    if user and bcrypt.checkpw(password.encode("utf-8"), user['password'].encode("utf-8")):
+        resp = make_response(redirect("/home"))
+        resp = set_secure_cookie(resp, user["user_id"])
+        return resp
+    else:
+        return render_template("login.html", error="Invalid phone number or password.")
 
 
-#add money
+#profile
+#profile_page
+@app.route('/profile')
+def profile():
+    user_id = get_user_id_from_cookie()
+    if not user_id:
+        return redirect("/login")
+    cursor = db.cursor(pymysql.cursors.DictCursor)
+    try:
+        cursor.execute("SELECT * FROM user_profile WHERE user_id = %s", (user_id,))
+        user = cursor.fetchone()
+        if not user:
+            return "User not found", 404
+        profile_data = {
+            "username": user["first_name"],
+            "name": f"{user['first_name']} {user['last_name']}",
+            "phone": user["phone_number"],
+            "firstName": user["first_name"],
+            "lastName": user["last_name"],
+            "dob": user["dob"].strftime("%Y-%m-%d") if user["dob"] else "",
+            "email": user["email"],
+            "nid": user["nid"],
+            "loyaltyPoints": user.get("points", 0),
+            "balance": float(user.get("balance", 0.0))
+        }
+        return render_template('profile.html', profile=profile_data)
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+    finally:
+        cursor.close()
+
+#edit_profile_page
+@app.route('/editprofile', methods=['GET'])
+def edit_profile():
+    user_id = get_user_id_from_cookie()
+    if not user_id:
+        return redirect('/login')
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM user_profile WHERE user_id = %s", (user_id,))
+            user = cursor.fetchone()
+        if not user:
+            flash('User not found', 'error')
+            return redirect('/home')
+        profile_data = {
+            'name': f"{user['first_name']} {user['last_name']}",
+            'phone': user['phone_number'],
+            'firstName': user['first_name'],
+            'lastName': user['last_name'],
+            'dob': user['dob'].strftime('%Y-%m-%d') if user['dob'] else '',
+            'email': user['email'],
+            'nid': user['nid']
+        }
+        return render_template('editprofile.html', profile=profile_data)
+    except Exception as e:
+        flash(f'Error loading profile: {str(e)}', 'error')
+        return redirect('/home')
+    
+#update profile
+@app.route('/updateprofile', methods=['POST'])
+def update_profile():
+    user_id = get_user_id_from_cookie()
+    if not user_id:
+        return redirect('/login')
+    first_name = request.form['firstName']
+    last_name = request.form['lastName']
+    dob = request.form['dob']
+    email = request.form['email']
+    nid = request.form['nid']
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            update_query = """
+                UPDATE user_profile
+                SET first_name=%s, last_name=%s, dob=%s, email=%s, nid=%s
+                WHERE user_id=%s
+            """
+            cursor.execute(update_query, (first_name, last_name, dob, email, nid, user_id))
+        conn.commit()
+        flash('Your Profile Updated Successfully.', 'success')
+        return redirect(url_for('edit_profile'))
+    except Exception as e:
+        print("Update failed:", e)
+        flash(f'Error updating profile: {str(e)}', 'error')
+        return redirect(url_for('edit_profile'))
+    
+
+
+
+
+#Add money
 #add money bank
 @app.route("/bank", methods=["GET", "POST"])
 def bank():
@@ -286,6 +451,9 @@ def confirm_investment():
 
 
 #Routes
+@app.route("/")
+def homepage():
+    return render_template("landing.html")
 
 @app.route("/add_money")
 def add_money():
