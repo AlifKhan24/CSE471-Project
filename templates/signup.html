@@ -1,4 +1,4 @@
-<!DOCTYPE html> 
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -93,8 +93,8 @@
     .error-message {
       color: red;
       font-size: 13px;
-      margin-top: -10px;
       grid-column: span 2;
+      margin-top: -10px;
       margin-bottom: 10px;
     }
 
@@ -129,6 +129,11 @@
       cursor: pointer;
     }
 
+    .signup-btn:disabled {
+      background-color: #9dbce3;
+      cursor: not-allowed;
+    }
+
     @media (max-width: 768px) {
       .container {
         flex-direction: column;
@@ -146,6 +151,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <div class="left-section">
@@ -155,43 +161,116 @@
     <div class="right-section">
       <h1>Create An Account</h1>
       <p>Already have an account? <a href="/login" style="color:#3e75c2; text-decoration: none;">Sign in here!</a></p>
-      
-      <!-- Displaying error message if phone number already exists -->
-      {% if phone_error %}
-        <div class="error-message">{{ phone_error }}</div>
-      {% endif %}
-      
+
       <form id="signupForm" method="POST" action="/signup">
         <input type="text" name="firstName" placeholder="First Name" required>
         <input type="text" name="lastName" placeholder="Last Name" required>
+
         <input type="email" name="email" placeholder="Email" required>
+        <div id="emailError" class="error-message" style="display: none;"></div>
 
         <input type="text" name="phone" placeholder="Phone Number" required>
+        <div id="phoneError" class="error-message" style="display: none;"></div>
+
         <input type="text" name="nid" placeholder="NID" required>
         <input type="password" name="password" placeholder="Create Password" required>
-
-        <!-- Add Date of Birth field -->
         <input type="date" name="dob" placeholder="Date of Birth" required>
 
-        <!-- Check if there's an error and display it -->
-        {% if error %}
-          <div class="error-message">{{ error }}</div>
-        {% endif %}
-
-        <!-- Check if there's a phone number error -->
-        {% if phone_error %}
-          <div class="error-message">{{ phone_error }}</div>
-        {% endif %}
-
         <div class="checkbox">
-          <input type="checkbox" required>
-          <label>Creating your account means you accept our <a href="#">Terms & Conditions</a>.</label>
+          <input type="checkbox" id="termsCheckbox" required>
+          <label for="termsCheckbox">Creating your account means you accept our <a href="#">Terms & Conditions</a>.</label>
         </div>
 
-        <button type="submit" class="signup-btn">Create Account</button>
+        <button type="submit" class="signup-btn" id="submitBtn" disabled>Create Account</button>
         <button type="button" class="signup-btn" style="background-color: #ccc; color: #0f1c2e;" onclick="window.location.href='/';">Back</button>
       </form>
     </div>
   </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const form = document.getElementById('signupForm');
+      const firstName = form.elements['firstName'];
+      const lastName = form.elements['lastName'];
+      const phone = form.elements['phone'];
+      const email = form.elements['email'];
+      const nid = form.elements['nid'];
+      const password = form.elements['password'];
+      const dob = form.elements['dob'];
+      const checkbox = document.getElementById('termsCheckbox');
+      const submitBtn = document.getElementById('submitBtn');
+
+      const phoneErrorDiv = document.getElementById('phoneError');
+      const emailErrorDiv = document.getElementById('emailError');
+
+      // Capitalize name inputs
+      const capitalizeLive = (input) => {
+        input.addEventListener('input', () => {
+          let val = input.value;
+          if (val.length > 0) {
+            input.value = val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+          }
+        });
+      };
+      capitalizeLive(firstName);
+      capitalizeLive(lastName);
+
+      // Enforce digit-only input
+      const enforceDigitInput = (input, maxLength) => {
+        input.addEventListener('input', () => {
+          input.value = input.value.replace(/\D/g, '').slice(0, maxLength);
+        });
+      };
+      enforceDigitInput(nid, 10);
+
+      // Phone validation
+      phone.addEventListener('input', () => {
+        phone.value = phone.value.replace(/\D/g, '').slice(0, 11);
+        if (phone.value.length >= 2 && !phone.value.startsWith('01')) {
+          phoneErrorDiv.textContent = "Phone number must start with '01'.";
+          phoneErrorDiv.style.display = 'block';
+        } else {
+          phoneErrorDiv.textContent = "";
+          phoneErrorDiv.style.display = 'none';
+        }
+        validateForm();
+      });
+
+      // Email validation
+      email.addEventListener('input', () => {
+        if (email.value.length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
+          emailErrorDiv.textContent = "Invalid email address.";
+          emailErrorDiv.style.display = 'block';
+        } else {
+          emailErrorDiv.textContent = "";
+          emailErrorDiv.style.display = 'none';
+        }
+        validateForm();
+      });
+
+      // Validate form for enabling submit
+      const validateForm = () => {
+        const isValidPhone = /^01\d{9}$/.test(phone.value);
+        const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value);
+        const isValidNID = /^\d{10}$/.test(nid.value);
+        const isNameFilled = firstName.value.trim() && lastName.value.trim();
+        const isPasswordFilled = password.value.trim().length > 0;
+        const isDOBFilled = dob.value;
+        const isChecked = checkbox.checked;
+
+        if (isValidPhone && isValidEmail && isValidNID && isNameFilled && isPasswordFilled && isDOBFilled && isChecked) {
+          submitBtn.disabled = false;
+        } else {
+          submitBtn.disabled = true;
+        }
+      };
+
+      // Attach to all inputs
+      [firstName, lastName, nid, password, dob, checkbox].forEach(input => {
+        input.addEventListener('input', validateForm);
+      });
+      checkbox.addEventListener('change', validateForm);
+    });
+  </script>
 </body>
 </html>
