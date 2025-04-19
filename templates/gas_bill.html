@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gas Bills - Mobile Banking</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: url('https://i.postimg.cc/15GmCmjp/shortage-gas-crisis-money-calculator-background-burning-gas-stove-508835-7063.jpg') no-repeat center center fixed;
+      background-size: cover;
+    }
+
+    nav {
+      background-color: #0f2749;
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+    }
+
+    nav img {
+      height: 40px;
+      cursor: pointer;
+    }
+
+    h2 {
+      text-align: center;
+      color: #0f2749;
+      margin-top: 20px;
+      margin-bottom: 0px;
+      font-size: 36px;
+    }
+
+    .main-container {
+      display: flex;
+      justify-content: center;
+      padding: 30px 20px;
+    }
+
+    .form-container {
+      background-color: #0f2749;
+      color: #aac5ea;
+      width: 400px;
+      padding: 30px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      position: relative;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    .button-group button {
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      background-color: #aac5ea;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .button-group button:hover {
+      background-color: #ddd;
+    }
+
+    .installment-section {
+      margin-top: 20px;
+    }
+
+    .installment-options, .multiple-options {
+      display: none;
+      position: absolute;
+      top: 30px;
+      right: -300px;
+      width: 250px;
+      background-color: #0f2749;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.4);
+    }
+
+    .installment-options label, .multiple-options label {
+      display: block;
+      margin: 10px 0;
+      color: white;
+    }
+
+    .slider {
+      width: 100%;
+    }
+
+    .back-button {
+      margin-top: 30px;
+      text-align: center;
+    }
+
+    .back-button button {
+      padding: 10px 30px;
+      background-color: #cc0000;
+      border: none;
+      border-radius: 6px;
+      color: black;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.4);
+      overflow: auto;
+    }
+
+    .modal-content {
+      background-color: #fefefe;
+      margin: 15% auto;
+      padding: 20px;
+      border: 1px solid #888;
+      width: 300px;
+      border-radius: 10px;
+    }
+
+    .close {
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      color: #aaa;
+    }
+
+    .close:hover {
+      color: black;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <img src="https://i.postimg.cc/nLt7Kfnk/Mobile-Banking-Logo.png" alt="Logo" onclick="goHome()">
+  </nav>
+
+  <h2>Gas Bills</h2>
+
+  <div class="main-container">
+    <div class="form-container">
+      <form method="POST" action="/pay_gas">
+        <div class="form-group">
+          <label for="meter">Meter Number</label>
+          <input type="text" id="meter" name="meter" placeholder="Enter Meter Number" required>
+        </div>
+        <div class="form-group">
+          <label for="user">User Name</label>
+          <input type="text" id="user" name="user" placeholder="Enter User Name" required>
+        </div>
+        <div class="form-group">
+          <label for="amount">Amount</label>
+          <input type="number" id="amount" name="amount" placeholder="Enter Amount" required>
+        </div>
+        <div class="form-group">
+          <label for="month">Month</label>
+          <select id="month" name="month">
+            <option>January</option><option>February</option><option>March</option>
+            <option>April</option><option>May</option><option>June</option>
+            <option>July</option><option>August</option><option>September</option>
+            <option>October</option><option>November</option><option>December</option>
+          </select>
+        </div>
+
+        <div class="installment-section">
+          <label><input type="checkbox" id="installment-checkbox" onclick="toggleInstallment('installment')"> Pay in Installments.</label><br>
+          <label><input type="checkbox" id="multiple-checkbox" onclick="toggleInstallment('multiple')"> Pay in Multiple Sources.</label>
+        </div>
+
+        <div class="installment-options" id="installment-options">
+          <label for="installment-select">Select Installment Months:</label>
+          <select id="installment-select" onchange="updateInstallment()">
+            <option value="">--Select--</option>
+            <option value="3">3 Months</option>
+            <option value="6">6 Months</option>
+            <option value="12">12 Months</option>
+          </select>
+
+          <label for="monthly-installment">Monthly Installment Will Be:</label>
+          <input type="text" id="monthly-installment" readonly>
+        </div>
+
+        <div class="multiple-options" id="multiple-options">
+          <label>Mobile Banking: <input type="range" class="slider" id="mobile" min="0" max="100" value="34" oninput="adjustSliders('mobile')"> <span id="mobile-val">34%</span></label>
+          <label>Bank Account: <input type="range" class="slider" id="bank" min="0" max="100" value="33" oninput="adjustSliders('bank')"> <span id="bank-val">33%</span></label>
+          <label>Card: <input type="range" class="slider" id="card" min="0" max="100" value="33" oninput="adjustSliders('card')"> <span id="card-val">33%</span></label>
+        </div>
+
+        <div class="button-group">
+          <button type="submit">Pay now</button>
+        </div>
+      </form>
+
+      <div class="back-button">
+        <button onclick="goBack()">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="paymentModal" class="modal">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h2 id="modalMessage">Processing Payment...</h2>
+      <div style="text-align: center; margin-top: 20px;">
+        <button onclick="goHome()" style="padding: 8px 20px; background-color: #0f2749; color: white; border: none; border-radius: 5px; cursor: pointer;">
+          Home
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function goHome() {
+      window.location.href = "/home";
+    }
+
+    function goBack() {
+      window.history.back();
+    }
+
+    function toggleInstallment(type) {
+      const installmentCheckbox = document.getElementById('installment-checkbox');
+      const multipleCheckbox = document.getElementById('multiple-checkbox');
+      const installmentOptions = document.getElementById('installment-options');
+      const multipleOptions = document.getElementById('multiple-options');
+
+      if (type === 'installment') {
+        if (installmentCheckbox.checked) {
+          multipleCheckbox.checked = false;
+          installmentOptions.style.display = 'block';
+          multipleOptions.style.display = 'none';
+        } else {
+          installmentOptions.style.display = 'none';
+        }
+      } else {
+        if (multipleCheckbox.checked) {
+          installmentCheckbox.checked = false;
+          multipleOptions.style.display = 'block';
+          installmentOptions.style.display = 'none';
+        } else {
+          multipleOptions.style.display = 'none';
+        }
+      }
+
+      updateInstallment();
+    }
+
+    function updateInstallment() {
+      const amount = parseFloat(document.getElementById('amount').value);
+      const months = parseInt(document.getElementById('installment-select').value);
+      const resultField = document.getElementById('monthly-installment');
+
+      if (!isNaN(amount) && !isNaN(months)) {
+        resultField.value = (amount / months).toFixed(2);
+      } else {
+        resultField.value = '';
+      }
+    }
+
+    document.getElementById('amount').addEventListener('input', updateInstallment);
+
+    function adjustSliders(changed) {
+      const mobile = document.getElementById('mobile');
+      const bank = document.getElementById('bank');
+      const card = document.getElementById('card');
+
+      let mVal = parseInt(mobile.value);
+      let bVal = parseInt(bank.value);
+      let cVal = parseInt(card.value);
+
+      const total = mVal + bVal + cVal;
+
+      if (total !== 100) {
+        let others = ['mobile', 'bank', 'card'].filter(id => id !== changed);
+        let first = document.getElementById(others[0]);
+        let second = document.getElementById(others[1]);
+
+        let newTotal = 100 - parseInt(document.getElementById(changed).value);
+        let val1 = Math.floor(newTotal / 2);
+        let val2 = newTotal - val1;
+
+        first.value = val1;
+        second.value = val2;
+      }
+
+      document.getElementById('mobile-val').innerText = mobile.value + '%';
+      document.getElementById('bank-val').innerText = bank.value + '%';
+      document.getElementById('card-val').innerText = card.value + '%';
+    }
+
+    function closeModal() {
+      document.getElementById('paymentModal').style.display = 'none';
+    }
+
+    window.onload = function () {
+      {% if success %}
+        showModal("{{ success }}");
+      {% elif error %}
+        showModal("{{ error }}");
+      {% endif %}
+    };
+
+    function showModal(message) {
+      document.getElementById('modalMessage').textContent = message;
+      document.getElementById('paymentModal').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
