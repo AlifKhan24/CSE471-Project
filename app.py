@@ -436,10 +436,249 @@ def confirm_investment():
 
 
 
+# Undo Transaction
+@app.route("/cancel_transaction/<trx_id>", methods=["POST"])
+def cancel_transaction(trx_id):
+    user_id = request.cookies.get("user_id")
+    print("Cancel request for trx_id:", trx_id, "| user_id:", user_id)
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("""
+                SELECT amount FROM history
+                WHERE LOWER(trx_id) = LOWER(%s) AND user_id = %s
+            """, (trx_id, user_id))
+            result = cursor.fetchone()
+
+            if not result:
+                print("Transaction not found")
+                return jsonify({"status": "error", "message": "Transaction not found"})
+
+            amount = result["amount"]
+            cursor.execute("""
+                SELECT * FROM admin_reports
+                WHERE user_id = %s AND trx_id = %s AND report_type = 'Request Cancellation'
+            """, (user_id, trx_id))
+            if cursor.fetchone():
+                return jsonify({"status": "exists", "message": "Already requested"})
+
+            cursor.execute("""
+                INSERT INTO admin_reports (user_id, report_type, trx_id, amount)
+                VALUES (%s, 'Request Cancellation', %s, %s)
+            """, (user_id, trx_id, amount))
+
+        db.commit()
+        print("Cancellation logged.")
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        print("Error:", e)
+        db.rollback()
+        return jsonify({"status": "error", "message": "Internal server error"})
 
 
+# Admin Reports
+@app.route("/admin_reports", methods=["GET", "POST"])
+def admin_reports():
+    if request.method == "POST":
+        trx_ids = request.form.getlist("trx_ids[]")
+
+        for i in range(len(trx_ids)):
+            trx_id = trx_ids[i]
+            action = request.form.get(f"actions_{i}")
+            remark = request.form.get(f"remarks_{i}")
+
+            print(f" Processing trx_id: {trx_id} | Action: {action} | Remark: {remark}")
+
+            if not action or action.strip() == "":
+                continue
+
+            try:
+                with db.cursor() as cursor:
+                    cursor.execute("""
+                        UPDATE admin_reports
+                        SET actions = %s, remarks = %s
+                        WHERE trx_id = %s AND report_type = 'Request Cancellation'
+                    """, (action, remark, trx_id))
+
+                    if action.lower() != "approve":
+                        continue
+                    cursor.execute("SELECT user_id, type FROM history WHERE trx_id = %s", (trx_id,))
+                    hist = cursor.fetchone()
+                    if not hist:
+                        continue
+
+                    user_id = hist["user_id"]
+                    trx_type = hist["type"].lower()
+
+                    if trx_type == "send money":
+                        cursor.execute("SELECT amount, phone_no FROM send_money WHERE trx_id = %s", (trx_id,))
+                        row = cursor.fetchone()
+                        if row:
+                            amount = row["amount"]
+                            phone_no = row["phone_no"]
 
 
+                            cursor.execute("UPDATE user_profile SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
+
+                            cursor.execute("SELECT user_id FROM user_profile WHERE phone_number = %s", (phone_no,))
+                            receiver = cursor.fetchone()
+                            if receiver:
+                                receiver_id = receiver["user_id"]
+                                cursor.execute("UPDATE user_profile SET balance = balance - %s WHERE user_id = %s", (amount, receiver_id))
+
+                            cursor.execute("DELETE FROM send_money WHERE trx_id = %s", (trx_id,))
+
+                    elif trx_type == "international money transfer":
+                        cursor.execute("SELECT amount_in_bdt FROM send_money_international WHERE trx_id = %s", (trx_id,))
+                        row = cursor.fetchone()
+                        if row:
+                            amount = row["amount_in_bdt"]
+                            cursor.execute("UPDATE user_profile SET balance = balance + %s WHERE user_id = %s", (amount, user_id))
+                            cursor.execute("DELETE FROM send_money_international WHERE trx_id = %s", (trx_id,))
+
+                    cursor.execute("DELETE FROM history WHERE trx_id = %s", (trx_id,))
+
+                db.commit()
+                print("Successfully processed and committed.")
+
+            except Exception as e:
+                print(f"Error processing trx_id {trx_id}:", e)
+                db.rollback()
+
+        return redirect("/admin_reports")
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("""
+                SELECT user_id, trx_id, report_type, amount
+                FROM admin_reports
+                WHERE report_type = 'Request Cancellation' AND (actions IS NULL OR actions = 'pending')
+                ORDER BY report_id ASC
+                LIMIT 10
+            """)
+            cancel_requests = cursor.fetchall()
+    except Exception as e:
+        print("Error loading cancel requests:", e)
+        cancel_requests = []
+
+    return render_template("admin_reports.html", cancel_requests=cancel_requests)
+
+
+# Messages
+@app.route("/user_messages", methods=["GET", "POST"])
+def user_messages():
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return "Unauthorized access", 401
+
+    try:
+        with db.cursor() as cursor:
+            if request.method == "POST":
+                message = request.form.get("message")
+                if message and message.strip():
+                    cursor.execute(
+                        "INSERT INTO messages (sender_id, message, role) VALUES (%s, %s, %s)",
+                        (user_id, message.strip(), "user")
+                    )
+                    db.commit()
+                    return redirect("/user_messages")
+
+
+            cursor.execute("""
+                SELECT message, role, timestamp
+                FROM messages
+                WHERE 
+                    (sender_id = %s AND role = 'user') OR 
+                    (recipient_id = %s AND role = 'admin')
+                ORDER BY timestamp ASC
+            """, (user_id, user_id))
+
+            messages = cursor.fetchall()
+
+    except Exception as e:
+        print(f"Message error: {e}")
+        messages = []
+
+    return render_template("user_messages.html", messages=messages)
+
+
+# Admin Inbox
+@app.route("/admin_inbox")
+def admin_inbox():
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("""
+                SELECT m1.sender_id AS user_id,
+                       u.phone_number,
+                       m1.message,
+                       m1.timestamp,
+                       EXISTS (
+                           SELECT 1 FROM messages m2 
+                           WHERE m2.sender_id = m1.sender_id 
+                           AND m2.role = 'user' 
+                           AND m2.is_read = FALSE
+                       ) AS has_unread
+                FROM messages m1
+                JOIN user_profile u ON m1.sender_id = u.user_id
+                WHERE m1.role = 'user'
+                AND m1.timestamp = (
+                    SELECT MAX(m2.timestamp)
+                    FROM messages m2
+                    WHERE m2.sender_id = m1.sender_id
+                    AND m2.role = 'user'
+                )
+                ORDER BY m1.timestamp DESC;
+            """)
+            conversations = cursor.fetchall()
+    except Exception as e:
+        print("Inbox fetch error:", e)
+        conversations = []
+
+    return render_template("admin_inbox.html", conversations=conversations)
+
+
+# Admin Messages
+@app.route("/admin_messages/<int:user_id>", methods=["GET", "POST"])
+def admin_messages(user_id):
+    admin_id = get_user_id_from_cookie()
+    if not admin_id:
+        return redirect("/admin_login")
+
+    try:
+        with db.cursor() as cursor:
+            if request.method == "POST":
+                msg = request.form.get("message")
+                if msg:
+
+                    cursor.execute("""
+                        INSERT INTO messages (sender_id, recipient_id, message, role)
+                        VALUES (NULL, %s, %s, 'admin')
+                    """, (user_id, msg.strip()))
+
+                    db.commit()
+                    return redirect(f"/admin_messages/{user_id}")
+
+            cursor.execute("""
+                UPDATE messages 
+                SET is_read = TRUE 
+                WHERE sender_id = %s AND role = 'user' AND is_read = FALSE
+            """, (user_id,))
+            db.commit()
+
+            cursor.execute("""
+                SELECT message, role, timestamp
+                FROM messages
+                WHERE (sender_id = %s AND role = 'user') 
+                   OR (recipient_id = %s AND role = 'admin')
+                ORDER BY timestamp ASC
+            """, (user_id, user_id))
+            messages = cursor.fetchall()
+
+        return render_template("admin_messages.html", messages=messages, user_id=user_id)
+    except Exception as e:
+        print("Chat load error:", e)
+        return "Internal Server Error", 500
 
 
 
