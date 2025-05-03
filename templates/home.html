@@ -9,11 +9,11 @@
       margin: 0;
       padding: 0;
       box-sizing: border-box;
-      font-family: Arial, sans-serif;
+      font-family: playfair display;
     }
 
     body {
-      background-image: url('https://i.postimg.cc/852zLbGd/360-F-139844282-z-OTcq-Zr-Dm932ap-LCp13-SMNz-LHn-Ck-Px0-F.jpg');
+      background-image: url('https://i.postimg.cc/k4zVhP2t/MB-Home.png');
       background-size: cover;
       background-position: center;
       background-attachment: fixed;
@@ -26,13 +26,13 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 15px;
+      padding: 15px 25px;
       background-color: #0f2749;
     }
 
     .logo-btn {
       width: 100px;
-      height: 30px;
+      height: 40px;
       background-color: transparent;
       border: none;
       cursor: pointer;
@@ -145,7 +145,6 @@
       <button id="profileBtn">Profile</button>
       <button id="favBtn">Favourite Accounts</button>
       <button id="notificationBtn">Notification</button>
-      <button id="reportBtn">Report</button> <!-- NEW -->
       <button id="historyBtn">History</button>
       <button id="logoutBtn">Log out</button>
     </div>
@@ -156,13 +155,11 @@
       <!-- Correct link to send_money route -->
       <a href="/send_money" class="menu-button" style="--bg-image: url('send.png')"><span>Send Money</span></a>
       <a href="/add_money" class="menu-button" style="--bg-image: url('add.png')"><span>Add Money</span></a>
-      <a href="/payment" class="menu-button" style="--bg-image: url('bills.png')"><span>Payment</span></a>
+      <a href="/utility" class="menu-button" style="--bg-image: url('bills.png')"><span>Payment</span></a>
       <a href="/investments" class="menu-button" style="--bg-image: url('invest.png')"><span>Investments</span></a>
-      <a href="/donations" class="menu-button" style="--bg-image: url('donate.png')"><span>Donations</span></a>
       <a href="/gift_card" class="menu-button" style="--bg-image: url('gift.png')"><span>Gift Card</span></a>
       <a href="/loan" class="menu-button" style="--bg-image: url('loan.png')"><span> Request Loan</span></a>
-      <a href="/returnloan" class="menu-button" style="--bg-image: url('lo.png')"><span>Return Loan</span></a>
-      <a href="/request_money" class="menu-button" style="--bg-image: url('request.png')"><span>Request Money From User</span></a>
+      <!-- <a href="/request_money" class="menu-button" style="--bg-image: url('request.png')"><span>Request Money From User</span></a> -->
     </div>
   </div>
 
@@ -176,11 +173,10 @@
       document.getElementById('profileBtn').onclick = () => window.location.href = "/profile";
       document.getElementById('favBtn').onclick = () => window.location.href = "/favourite_accounts";
       document.getElementById('notificationBtn').onclick = () => window.location.href = "/notifications";
-      document.getElementById('reportBtn').onclick = () => window.location.href = "/report";         // NEW
       document.getElementById('historyBtn').onclick = () => window.location.href = "/history";       // NEW
       document.getElementById('logoutBtn').onclick = () => window.location.href = "/";
       document.getElementById('faqBtn').onclick = () => window.location.href = "/faq";
-      document.getElementById('contactBtn').onclick = () => window.location.href = "/contact_us";    // NEW
+      document.getElementById('contactBtn').onclick = () => window.location.href = "/user_messages";    // NEW
 
     });
   </script>
