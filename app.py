@@ -69,6 +69,94 @@ def add_months(start_date, months):
 
 
 
+### Alif ####
+#Registration and Signin
+#admin_signup
+@app.route("/admin_signup", methods=["GET", "POST"])
+def admin_signup():
+    if request.method == "GET":
+        return render_template("admin_signup.html")
+    
+    try:
+        firstName = request.form.get("firstName")
+        lastName = request.form.get("lastName")
+        dob = request.form.get("dob")
+        email = request.form.get("email")
+        phone = request.form.get("phone")
+        nid = request.form.get("nid")
+        password = request.form.get("password")
+        # Validation
+        if not password:
+            return render_template("admin_signup.html", error="Password is required.")
+
+        if len(phone) != 11 or not phone.startswith("01"):
+            return render_template("admin_signup.html", error="Enter a valid 11-digit phone number starting with '01'.")
+
+        try:
+            dob_date = datetime.strptime(dob, "%Y-%m-%d").date()
+
+        except ValueError:
+            return render_template("admin_signup.html", error="Invalid DOB format. Use YYYY-MM-DD.")
+
+        # Check if phone number already exists
+        with db.cursor() as cursor:
+            cursor.execute("SELECT * FROM admin_profile WHERE phone_number = %s", (phone,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                return render_template("admin_signup.html", phone_error="Phone number already in use")
+
+        hashed_password = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode()
+        # Insert new admin
+        with db.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO admin_profile 
+                (first_name, last_name, dob, email, phone_number, nid, password, status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, 'unauthorized')
+            """, (firstName, lastName, dob_date, email, phone, nid, hashed_password))
+            db.commit()
+        return redirect("/admin_req_submitted")
+
+    except Exception as e:
+        traceback.print_exc()
+        return render_template("admin_signup.html", error=f"Signup error: {str(e)}")
+    
+#admin login
+@app.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "GET":
+        return render_template("admin_login.html")
+
+    phone = request.form.get("phone")
+    password = request.form.get("password")
+
+    print("Phone submitted:", phone)
+    print("Password submitted:", password)
+
+    if not phone or not password:
+        return render_template("admin_login.html", error="Please fill in all fields.")
+
+    with db.cursor() as cursor:
+        cursor.execute("SELECT * FROM admin_profile WHERE phone_number = %s", (phone,))
+        admin = cursor.fetchone()
+
+    print("Admin fetched from DB:", admin)
+
+    if not admin:
+        return render_template("admin_login.html", error="Admin not found.")
+    
+    if not bcrypt.checkpw(password.encode("utf-8"), admin["password"].encode("utf-8")):
+        return render_template("admin_login.html", error="Invalid password.")
+
+    status = admin.get("status", "unauthorized")
+    if status == "unauthorized":
+        return render_template("admin_login.html", error="Request pending.")
+    elif status == "denied":
+        return render_template("admin_login.html", error="Request denied.")
+
+    resp = make_response(redirect("/admin_home"))
+    resp = set_secure_cookie(resp, admin["admin_id"])
+    return resp
+
 #user_signup
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -86,7 +174,7 @@ def signup():
         if len(phone) != 11 or not phone.startswith("01"):
             return render_template("signup.html", error="Enter a valid 11-digit phone number starting with '01'.")
         try:
-            dob_date = datetime.datetime.strptime(dob, "%Y-%m-%d").date()
+            dob_date = datetime.strptime(dob, "%Y-%m-%d").date()
         except ValueError:
             return render_template("signup.html", error="Invalid DOB format. Use YYYY-MM-DD.")
         # Checking if the phone number already exists
@@ -114,19 +202,25 @@ def login():
     password = request.form.get("password")
     if not phone or len(phone) != 11 or not phone.startswith("01"):
         return render_template("login.html", error="Enter a valid 11-digit phone number starting with '01'.")
+    
     with db.cursor() as cursor:
         cursor.execute("SELECT * FROM user_profile WHERE phone_number = %s", (phone,))
         user = cursor.fetchone()
-    if user and bcrypt.checkpw(password.encode("utf-8"), user['password'].encode("utf-8")):
-        resp = make_response(redirect("/home"))
-        resp = set_secure_cookie(resp, user["user_id"])
-        return resp
-    else:
-        return render_template("login.html", error="Invalid phone number or password.")
+    
+    if user:
+        if user["status"] != "active":
+            return render_template("account_suspended.html")
+
+        if bcrypt.checkpw(password.encode("utf-8"), user['password'].encode("utf-8")):
+            resp = make_response(redirect("/home"))
+            resp = set_secure_cookie(resp, user["user_id"])
+            return resp
+
+    return render_template("login.html", error="Invalid phone number or password.")
+
 
 
 #profile
-#profile_page
 @app.route('/profile')
 def profile():
     user_id = get_user_id_from_cookie()
@@ -148,7 +242,8 @@ def profile():
             "email": user["email"],
             "nid": user["nid"],
             "loyaltyPoints": user.get("points", 0),
-            "balance": float(user.get("balance", 0.0))
+            "balance": float(user.get("balance", 0.0)),
+            "profilePic": user.get("profile_pic", "default.png")  # <--- this line
         }
         return render_template('profile.html', profile=profile_data)
     except Exception as e:
@@ -156,7 +251,33 @@ def profile():
     finally:
         cursor.close()
 
-#edit_profile_page
+@app.route("/upload_profile_picture", methods=["POST"])
+def upload_profile_picture():
+    user_id = get_user_id_from_cookie()
+    if not user_id or 'profilePic' not in request.files:
+        return jsonify({"success": False, "message": "Unauthorized or no file"})
+
+    file = request.files['profilePic']
+    if file.filename == '':
+        return jsonify({"success": False, "message": "No selected file"})
+
+    try:
+        filename = secure_filename(file.filename)
+        ext = os.path.splitext(filename)[1]
+        new_filename = f"{user_id}_profile{ext}"
+        upload_path = os.path.join("static/uploads", new_filename)
+        file.save(upload_path)
+
+        # Update the DB with new profile picture filename
+        cursor = db.cursor()
+        cursor.execute("UPDATE user_profile SET profile_pic = %s WHERE user_id = %s", (new_filename, user_id))
+        db.commit()
+        cursor.close()
+
+        return jsonify({"success": True, "image_url": f"/static/uploads/{new_filename}"})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)})
+
 @app.route('/editprofile', methods=['GET'])
 def edit_profile():
     user_id = get_user_id_from_cookie()
@@ -177,120 +298,268 @@ def edit_profile():
             'lastName': user['last_name'],
             'dob': user['dob'].strftime('%Y-%m-%d') if user['dob'] else '',
             'email': user['email'],
-            'nid': user['nid']
+            'nid': user['nid'],
+            'profile_pic': user['profile_pic']
         }
         return render_template('editprofile.html', profile=profile_data)
     except Exception as e:
         flash(f'Error loading profile: {str(e)}', 'error')
         return redirect('/home')
     
-#update profile
 @app.route('/updateprofile', methods=['POST'])
 def update_profile():
     user_id = get_user_id_from_cookie()
     if not user_id:
         return redirect('/login')
+
     first_name = request.form['firstName']
     last_name = request.form['lastName']
     dob = request.form['dob']
     email = request.form['email']
     nid = request.form['nid']
+
+    profile_pic = None
+    update_profile_pic = False
+
+    if 'profilePic' in request.files:
+        file = request.files['profilePic']
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            upload_folder = 'static/uploads'
+            os.makedirs(upload_folder, exist_ok=True)
+            profile_pic_path = os.path.join(upload_folder, filename)
+            file.save(profile_pic_path)
+            profile_pic = f'/{filename}'
+            update_profile_pic = True
+
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            update_query = """
-                UPDATE user_profile
-                SET first_name=%s, last_name=%s, dob=%s, email=%s, nid=%s
-                WHERE user_id=%s
-            """
-            cursor.execute(update_query, (first_name, last_name, dob, email, nid, user_id))
+            if update_profile_pic:
+                update_query = """
+                    UPDATE user_profile
+                    SET first_name=%s, last_name=%s, dob=%s, email=%s, nid=%s, profile_pic=%s
+                    WHERE user_id=%s
+                """
+                cursor.execute(update_query, (first_name, last_name, dob, email, nid, profile_pic, user_id))
+            else:
+                update_query = """
+                    UPDATE user_profile
+                    SET first_name=%s, last_name=%s, dob=%s, email=%s, nid=%s
+                    WHERE user_id=%s
+                """
+                cursor.execute(update_query, (first_name, last_name, dob, email, nid, user_id))
+
         conn.commit()
         flash('Your Profile Updated Successfully.', 'success')
         return redirect(url_for('edit_profile'))
+
     except Exception as e:
         print("Update failed:", e)
         flash(f'Error updating profile: {str(e)}', 'error')
         return redirect(url_for('edit_profile'))
-    
-#Schedule Transactions
-@app.route("/schedule_transactions", methods=["GET", "POST"])
-def schedule_transactions():
+
+
+
+#Loans
+# Request Loan
+@app.route("/api/request-loan", methods=["POST"])
+def request_loan():
     user_id = get_user_id_from_cookie()
     if not user_id:
-        return redirect("/login")
-
-    if request.method == "GET":
-        return render_template("schedule_transactions.html")
-
-    phone = request.form.get("account")
-    amount = request.form.get("amount")
-    scheduled_time_str = request.form.get("datetime")
+        return jsonify({"success": False, "message": "User not logged in"}), 401
 
     try:
-        amount = float(amount)
-        if amount <= 0:
-            raise ValueError("Invalid amount")
+        data = request.get_json()
+        amount = float(data.get("amount", 0))
+        duration = int(data.get("duration", 0))
 
-        scheduled_time = datetime.strptime(scheduled_time_str, "%Y-%m-%dT%H:%M")
+        if amount <= 0 or duration not in range(1, 7):
+            return jsonify({"success": False, "message": "Invalid input"}), 400
+
+        interest_rates = {
+            1: 5,
+            2: 5.5,
+            3: 6,
+            4: 6.5,
+            5: 7,
+            6: 7.5
+        }
+
+        interest_rate = interest_rates[duration]
+        return_amount = round(amount + (amount * (interest_rate / 100)), 2)
+
+        trx_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
 
         with db.cursor() as cursor:
-            cursor.execute("SELECT user_id FROM user_profile WHERE phone_number = %s", (phone,))
-            receiver = cursor.fetchone()
-
-            if not receiver:
-                return render_template("schedule_transactions.html", error="Recipient not found.")
-
-            receiver_id = receiver["user_id"]
             cursor.execute("""
-                INSERT INTO schedule_transactions (sender_id, receiver_id, amount, scheduled_time)
-                VALUES (%s, %s, %s, %s)
-            """, (user_id, receiver_id, amount, scheduled_time))
+                INSERT INTO loans (
+                    trx_id, user_id, loan_amount, interest_rate, duration, return_amount, status,
+                    issue_date, end_date
+                ) VALUES (%s, %s, %s, %s, %s, %s, 'pending', NULL, NULL)
+            """, (
+                trx_id, user_id, amount, interest_rate, duration, return_amount
+            ))
             db.commit()
 
-        return render_template("schedule_transactions.html", success="Transaction scheduled successfully!")
+        return jsonify({"success": True})
+
     except Exception as e:
-        return render_template("schedule_transactions.html", error="Failed to schedule transaction.")
-    
-def process_scheduled_transactions():
-    while True:
-        now = datetime.now()
+        db.rollback()
+        print("Loan request error:", e)
+        return jsonify({"success": False, "message": "Server error"}), 500
+
+# Approve Loans
+@app.route("/approve_loans", methods=["GET", "POST"])
+def approve_loans():
+    if request.method == "GET":
+        try:
+            with db.cursor() as cursor:
+                cursor.execute("""
+                    SELECT trx_id, user_id, loan_amount, duration, return_amount
+                    FROM loans
+                    WHERE status = 'pending'
+                    ORDER BY trx_id ASC
+                    LIMIT 10
+                """)
+                pending_loans = cursor.fetchall()
+        except Exception as e:
+            print("Error fetching loans:", e)
+            pending_loans = []
+        return render_template("approve_loans.html", pending_loans=pending_loans)
+
+    elif request.method == "POST":
+        trx_ids = request.form.getlist("trx_ids[]")  # ensure it's from hidden input array
+        try:
+            with db.cursor() as cursor:
+                for index, trx_id in enumerate(trx_ids):
+                    status = request.form.get(f"statuses_{index}")
+                    remarks = request.form.get(f"remarks_{index}", "").strip()
+
+                    if status not in ("approved", "denied"):
+                        continue
+
+                    cursor.execute("SELECT user_id, loan_amount, duration FROM loans WHERE trx_id = %s", (trx_id,))
+                    loan_info = cursor.fetchone()
+                    if not loan_info:
+                        continue
+
+                    user_id = loan_info["user_id"]
+                    loan_amount = loan_info["loan_amount"]
+                    duration = loan_info["duration"]
+
+                    alert_msg = f"Your loan of {loan_amount} has been {status}."
+                    if remarks:
+                        alert_msg += f" Message: {remarks}"
+
+                    cursor.execute("INSERT INTO notifications (user_id, alerts) VALUES (%s, %s)", (user_id, alert_msg))
+
+                    if status == "approved":
+                        issue_date = date.today()
+                        end_date = add_months(issue_date, duration)
+                        cursor.execute("""
+                            UPDATE loans 
+                            SET status = %s, issue_date = %s, end_date = %s, remarks = %s
+                            WHERE trx_id = %s
+                        """, (status, issue_date, end_date, remarks, trx_id))
+                        cursor.execute("UPDATE user_profile SET balance = balance + %s WHERE user_id = %s", (loan_amount, user_id))
+                    else:
+                        cursor.execute("UPDATE loans SET status = %s, remarks = %s WHERE trx_id = %s", (status, remarks, trx_id))
+
+            db.commit()
+            flash(" ", "success")            
+            # flash("Loan approvals updated successfully!", "success")
+        except Exception as e:
+            db.rollback()
+            print("Error updating loans:", traceback.format_exc())
+            flash("An error occurred while processing approvals.", "error")
+
+        return redirect("/approve_loans")
+
+#Active Loans
+@app.route("/active_loans")
+def active_loans():
+    user_id = get_user_id_from_cookie()
+    if not user_id:
+        return redirect("/login")  # or handle unauthorized access
+
+    try:
         with db.cursor() as cursor:
             cursor.execute("""
-                SELECT * FROM schedule_transactions
-                WHERE scheduled_time <= %s AND (status IS NULL OR status = 'pending')
-            """, (now,))
-            transactions = cursor.fetchall()
-            for txn in transactions:
-                sender_id = txn["sender_id"]
-                receiver_id = txn["receiver_id"]
-                amount = txn["amount"]
-                schedule_id = txn["schedule_id"]
+                SELECT trx_id, user_id, loan_amount, interest_rate, duration,
+                       issue_date, end_date, return_amount
+                FROM loans
+                WHERE user_id = %s AND status IN ('approved', 'pending')
+            """, (user_id,))
+            active_loans = cursor.fetchall()
+    except Exception as e:
+        print("Error loading active loans:", e)
+        active_loans = []
 
-                cursor.execute("SELECT balance FROM user_profile WHERE user_id = %s", (sender_id,))
-                sender = cursor.fetchone()
-                cursor.execute("SELECT phone_number FROM user_profile WHERE user_id = %s", (receiver_id,))
-                receiver_phone = cursor.fetchone()
-                receiver_phone = receiver_phone["phone_number"]
-                if not sender or sender["balance"] < amount:
-                    cursor.execute("UPDATE schedule_transactions SET status = 'cancelled' WHERE schedule_id = %s", (schedule_id,))
-                    alert = f"Schedule transfer to {receiver_phone} of {amount} Taka has been cancelled due to insufficient balance."
-                    cursor.execute("INSERT INTO notifications (user_id, alerts) VALUES (%s, %s)", (sender_id, alert))
-                    continue  
+    return render_template("active_loans.html", active_loans=active_loans)
 
-                #Complete transfer
-                cursor.execute("UPDATE user_profile SET balance = balance - %s WHERE user_id = %s", (amount, sender_id))
-                cursor.execute("UPDATE user_profile SET balance = balance + %s WHERE user_id = %s", (amount, receiver_id))
-                alert = f"Schedule transfer to {receiver_phone} of {amount} Taka Successful!"
-                cursor.execute("INSERT INTO notifications (user_id, alerts) VALUES (%s, %s)", (sender_id, alert))             
-                cursor.execute("""
-                    INSERT INTO history (user_id, type, trx_id, account, amount)
-                    VALUES (%s, 'Scheduled Send Money', 'N/A', %s, %s)
-                """, (sender_id, receiver_phone, -amount))
-                #update status
-                cursor.execute("UPDATE schedule_transactions SET status = 'completed' WHERE schedule_id = %s", (schedule_id,))
-            db.commit()
-        sleep(5)
+# Pay Loan
+@app.route("/pay_loan/<trx_id>", methods=["POST"])
+def pay_loan(trx_id):
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("SELECT user_id, return_amount FROM loans WHERE trx_id = %s AND status = 'approved'", (trx_id,))
+            loan = cursor.fetchone()
+            if not loan:
+                return jsonify({"status": "error", "message": "Loan not found or already paid."})
 
+            user_id = loan["user_id"]
+            amount_due = loan["return_amount"]
+            cursor.execute("SELECT balance FROM user_profile WHERE user_id = %s", (user_id,))
+            user = cursor.fetchone()
+            if not user or user["balance"] < amount_due:
+                return jsonify({"status": "error", "message": "Insufficient Balance"})
+            cursor.execute("UPDATE user_profile SET balance = balance - %s WHERE user_id = %s", (amount_due, user_id))
+            cursor.execute("DELETE FROM loans WHERE trx_id = %s", (trx_id,))
+
+            #Notification
+            alert = f"Your loan of {amount_due} has been fully paid."
+            cursor.execute("INSERT INTO notifications (user_id, alerts) VALUES (%s, %s)", (user_id, alert))
+            cursor.execute("""
+                INSERT INTO history (user_id, type, trx_id, account, amount)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (user_id, "Loan Payment", "N/A", "N/A", amount_due))
+
+        db.commit()
+        return jsonify({"status": "success"})
+    
+    except Exception as e:
+        print("Loan payment error:", e)
+        db.rollback()
+        return jsonify({"status": "error", "message": "An error occurred"})
+
+
+
+# History
+@app.route("/history")
+def history():
+    user_id = request.cookies.get("user_id")
+
+    if not user_id:
+        return "User not logged in or session expired", 401
+
+    try:
+        with db.cursor() as cursor:
+            cursor.execute("""
+                SELECT type, trx_id, account, time, amount
+                FROM history
+                WHERE user_id = %s
+                ORDER BY time DESC
+            """, (user_id,))
+            history_records = cursor.fetchall()
+    except Exception as e:
+        history_records = []
+
+    return render_template("history.html", history_records=history_records)
+
+
+
+###  Fatima ####
 @app.route("/api/pending-scheduled-transactions")
 def get_scheduled_transactions():
     user_id = get_user_id_from_cookie()
@@ -846,6 +1115,7 @@ def user_suspend():
 
 
 
+#### Aornab ########
 
 #Add money
 #add money bank
