@@ -1133,8 +1133,8 @@ def current_investments():
 
 def process_matured_investments():
     while True:
-        #today = date.today() 
-        today = date(2025, 9, 1) 
+        today = date.today() 
+        #today = date(2025, 9, 1) 
         
         try:
             db = pymysql.connect(
