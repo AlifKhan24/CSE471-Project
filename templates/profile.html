@@ -1,3 +1,4 @@
+<!-- UPDATED PROFILE PAGE -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,12 +8,11 @@
   <style>
     body {
       margin: 0;
-      font-family: 'Segoe UI', sans-serif;
+      font-family: playfair display;
       background: url('https://i.postimg.cc/5NSFTp2V/4775334-19366.jpg');
       background-size: cover;
     }
 
-    /* Overlay to make content readable over background */
     .overlay {
       background-color: none;
       min-height: 100vh;
@@ -145,23 +145,19 @@
 </head>
 <body>
 
-  <!-- Overlay to darken/lighten background -->
   <div class="overlay">
 
-    <!-- Navigation Bar -->
     <nav>
       <img src="https://i.postimg.cc/nLt7Kfnk/Mobile-Banking-Logo.png" alt="Logo" onclick="goHome()" />
       <div style="margin-left: auto; display: flex; gap: 8px;">
-        <button onclick="location.href='/set_limit'" style="padding: 6px 10px; font-size: 12px;" class="edit-btn">Set Transaction Limit</button>
-        <button onclick="location.href='/active_loans'" style="padding: 6px 10px; font-size: 12px;" class="edit-btn">Current Loans</button>
-        <button onclick="location.href='/pendinginstallments'" style="padding: 6px 10px; font-size: 12px;" class="edit-btn">Pending Installments</button>
-        <button onclick="location.href='/currentinvestments'" style="padding: 6px 10px; font-size: 12px;" class="edit-btn">Current Investments</button>
-        <button onclick="location.href='/statements'" style="padding: 6px 10px; font-size: 12px;" class="edit-btn">Download Statements</button>
+        <button onclick="location.href='/set_limit'" class="edit-btn" style="padding: 6px 10px; font-size: 12px;">Set Transaction Limit</button>
+        <button onclick="location.href='/active_loans'" class="edit-btn" style="padding: 6px 10px; font-size: 12px;">Current Loans</button>
+        <button onclick="location.href='/pending_installments'" class="edit-btn" style="padding: 6px 10px; font-size: 12px;">Pending Installments</button>
+        <button onclick="location.href='/current_investments'" class="edit-btn" style="padding: 6px 10px; font-size: 12px;">Current Investments</button>
+        <button onclick="window.location.href='/download_statements'" class="edit-btn" style="padding: 6px 10px; font-size: 12px;">Download Statements</button>
       </div>
-      
     </nav>
 
-    <!-- Profile Container -->
     <div class="container">
       <div class="header">
         <div>
@@ -169,12 +165,10 @@
           <p class="date" id="datetime"></p>
         </div>
         <a href="/editprofile"><button class="edit-btn">Edit</button></a>
-
-        <!-- <button class="edit-btn">Edit</button> -->
       </div>
 
       <div class="profile-info">
-        <img src="https://i.postimg.cc/y86VfCdF/User-Profile-PNG-Image.png" alt="User Photo" />
+        <img id="profilePic" src="/static/uploads/{{ profile.profilePic }}" alt="User Photo" />
         <div class="profile-details">
           <h3 id="name">User Name</h3>
           <p id="phone">01XXXXXXXXX</p>
@@ -223,11 +217,11 @@
     }
 
     function goBack() {
-      window.history.back();
+      window.location.href = "/home";
     }
 
     function seeMore() {
-      alert("More loyalty details coming soon!");
+      window.location.href = "/loyalty_points";
     }
 
     function updateDateTime() {
@@ -239,10 +233,8 @@
     setInterval(updateDateTime, 1000);
     updateDateTime();
 
-    // Simulating backend data load
     window.onload = function () {
       const backendData = {{ profile | tojson }};
-
       document.getElementById("username").textContent = backendData.username;
       document.getElementById("name").textContent = backendData.name;
       document.getElementById("phone").textContent = backendData.phone;
