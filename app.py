@@ -1342,20 +1342,7 @@ def confirm_investment():
             """, (user_id, "Investment", trx_id, name, -amount))
 
             db.commit()
-            #invest period tracker
-            def release_return():
-                now = datetime.now().date()
-                wait_seconds = (end_date - now).days * 86400
-                sleep(max(0, wait_seconds))
-                try:
-                    with db.cursor() as c:
-                        c.execute("UPDATE user_profile SET balance = balance + %s WHERE user_id = %s",
-                                  (return_amount, user_id))
-                        db.commit()
-                except Exception as e:
-                    print("Error adding return amount later:", e)
-            threading.Thread(target=release_return).start()
-            return jsonify({"success": True})
+
     except Exception as e:
         db.rollback()
         print("Error in investment confirmation:", e)
