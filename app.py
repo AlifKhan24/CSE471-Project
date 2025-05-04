@@ -32,7 +32,7 @@ app.secret_key = 'your_secret_key_here'
 db = pymysql.connect(
     host="localhost",
     user="root",
-    password="@Mysql",
+    password="1234",
     database="mobilebanking",
     cursorclass=pymysql.cursors.DictCursor  
 )
@@ -156,6 +156,47 @@ def admin_login():
     resp = make_response(redirect("/admin_home"))
     resp = set_secure_cookie(resp, admin["admin_id"])
     return resp
+
+# New Admin Approvals
+@app.route("/approvals", methods=["GET", "POST"])
+def approvals():
+    if request.method == "GET":
+        try:
+            with db.cursor() as cursor:
+                cursor.execute("""
+                    SELECT first_name, last_name, email, nid, dob, phone_number
+                    FROM admin_profile
+                    WHERE status = 'unauthorized'
+                    ORDER BY admin_id ASC
+                    LIMIT 10
+                """)
+                pending_admins = cursor.fetchall()
+        except Exception as e:
+            print("Error fetching approvals:", e)
+            pending_admins = []
+        return render_template("admin_approvals.html", pending_admins=pending_admins)
+
+    elif request.method == "POST":
+        try:
+            phones = request.form.getlist("phones")
+            actions = request.form.getlist("actions")
+
+            updates = list(zip(phones, actions))
+            with db.cursor() as cursor:
+                for phone, action in updates:
+                    if action == "Approve":
+                        cursor.execute("UPDATE admin_profile SET status = 'authorized' WHERE phone_number = %s", (phone,))
+                    elif action == "Deny":
+                        cursor.execute("UPDATE admin_profile SET status = 'denied' WHERE phone_number = %s", (phone,))
+            db.commit()
+            flash("Approvals updated successfully!", "success")
+        except Exception as e:
+            print("Error processing approvals:", e)
+            flash("Something went wrong. Try again.", "error")
+
+        return redirect("/approvals")
+
+
 
 #user_signup
 @app.route("/signup", methods=["GET", "POST"])
@@ -1789,6 +1830,135 @@ def home():
         return render_template("home.html", user=user)
     else:
         return "User not found", 404
+#Notifications
+@app.route('/notifications')
+def notifications():
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return redirect('/login')
+    with db.cursor() as cursor:
+        cursor.execute("SELECT alerts, timestamp FROM notifications WHERE user_id = %s ORDER BY timestamp DESC", (user_id,))
+        notifications = cursor.fetchall()
+    return render_template('notifications.html', notifications=notifications)
+
+@app.route('/clear_notifications', methods=['POST'])
+def clear_notifications():
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return redirect('/login')
+    with db.cursor() as cursor:
+        cursor.execute("DELETE FROM notifications WHERE user_id = %s", (user_id,))
+    db.commit()
+    return redirect('/notifications')
+
+@app.route('/download_statements')
+def download_statements():
+    user_id = request.cookies.get('user_id')
+    if not user_id:
+        return redirect('/login')
+    '''connection = db
+    cursor = connection.cursor(pymysql.cursors.DictCursor)'''
+    connection = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="1234",
+        database="mobilebanking",
+        cursorclass=pymysql.cursors.DictCursor
+    )
+    cursor = connection.cursor()
+
+    # Fetch user info
+    cursor.execute("SELECT first_name, last_name, email, phone_number FROM user_profile WHERE user_id=%s", (user_id,))
+    user = cursor.fetchone()
+    if not user:
+        connection.close()
+        return "User not found"
+
+    # Prepare PDF
+    buffer = BytesIO()
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    y = height - inch
+
+    # Draw logo (optional)
+    logo_path = "templates/logo.png"  # Replace with your actual logo path
+    try:
+        pdf.drawImage(logo_path, 40, y - 50, width=100, height=80)
+    except:
+        pass
+
+    y -= 70
+
+    # User Info
+    pdf.setFont("Helvetica-Bold", 14)
+    pdf.drawString(200, y, "Transaction Statement")
+    y -= 30
+
+    pdf.setFont("Helvetica", 10)
+    pdf.drawString(40, y, f"Name: {user['first_name']} {user['last_name']}")
+    y -= 15
+    pdf.drawString(40, y, f"Email: {user['email']}")
+    y -= 15
+    pdf.drawString(40, y, f"Phone: {user['phone_number']}")
+    y -= 15
+    pdf.drawString(40, y, f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    y -= 30
+
+    # Define a helper to draw transactions
+    def draw_section(title, transactions, headers):
+        nonlocal y
+        if y < 100:
+            pdf.showPage()
+            y = height - 50
+        pdf.setFont("Helvetica-Bold", 12)
+        pdf.drawString(40, y, title)
+        y -= 20
+        pdf.setFont("Helvetica-Bold", 10)
+        for i, header in enumerate(headers):
+            pdf.drawString(40 + i*100, y, header)
+        y -= 15
+        pdf.setFont("Helvetica", 10)
+        for trx in transactions:
+            for i, key in enumerate(headers):
+                value = str(trx.get(key.lower(), ''))
+                pdf.drawString(40 + i*100, y, value)
+            y -= 15
+            if y < 100:
+                pdf.showPage()
+                y = height - 50
+
+    # Transactions to include
+    queries = [
+        ("Added Money (Bank)", "SELECT trx_id, amount FROM add_money_bank WHERE user_id=%s", ['Trx_id', 'Amount']),
+        ("Added Money (Card)", "SELECT trx_id, amount FROM add_money_card WHERE user_id=%s", ['Trx_id', 'Amount']),
+        ("Sent Money", "SELECT trx_id, amount FROM send_money WHERE user_id=%s", ['Trx_id', 'Amount']),
+        ("Sent International", "SELECT trx_id, amount_in_bdt FROM send_money_international WHERE user_id=%s", ['Trx_id', 'Amount_in_bdt']),
+        ("Loans", "SELECT trx_id, loan_amount FROM loans WHERE user_id=%s", ['Trx_id', 'Loan_amount']),
+        ("Investments", "SELECT trx_id, amount FROM investment_user WHERE user_id=%s", ['Trx_id', 'Amount']),
+        ("Electricity Bills", "SELECT meter_no, amount FROM pay_electricity WHERE user_id=%s", ['Meter_no', 'Amount']),
+        ("Gas Bills", "SELECT meter_no, amount FROM pay_gas WHERE user_id=%s", ['Meter_no', 'Amount']),
+        ("Wi-Fi Bills", "SELECT wifi_id, amount FROM pay_wifi WHERE user_id=%s", ['Wifi_id', 'Amount']),
+    ]
+
+    for section_title, query, headers in queries:
+        cursor.execute(query, (user_id,))
+        records = cursor.fetchall()
+        if records:
+            draw_section(section_title, records, headers)
+            y -= 10
+
+    connection.close()
+    pdf.save()
+
+    buffer.seek(0)
+    return send_file(buffer, as_attachment=True, download_name="statement.pdf", mimetype='application/pdf')
+
+
+
+
+
+
     
 @app.route("/")
 def homepage():
