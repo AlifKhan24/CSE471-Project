@@ -2072,7 +2072,7 @@ def send_now():
         db.commit()
 
     return redirect(url_for('send_now', status='success'))
-
+#comit
 #send_money_internationally
 @app.route('/submit_transaction', methods=['POST'])
 def submit_transaction():
